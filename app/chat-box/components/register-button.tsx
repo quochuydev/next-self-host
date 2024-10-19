@@ -1,14 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Send, File, UserPlus, LogIn, Menu, Users } from "lucide-react";
@@ -21,6 +13,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  createClient,
+  CryptoEvent,
+  EventType,
+  MatrixEvent,
+  RoomEvent,
+  MatrixClient,
+  Room,
+  MsgType,
+} from "matrix-js-sdk";
 
 export default function DemoCreateAccount() {
   return (

@@ -18,7 +18,7 @@ import {
   MsgType,
 } from "matrix-js-sdk";
 
-const homeserverUrl = "http://localhost:8009";
+const homeServerUrl = "http://localhost:8009";
 const deviceId = "REDACTED";
 const defaultRoomId = "!QreMEfWZjEiFkZrday:e2e.homeserver.localhost";
 const defaultJwt =
@@ -31,10 +31,18 @@ export default function ChatBox() {
   const [jwt, setJwt] = useState(defaultJwt);
   const [recoveryKey, setRecoveryKey] = useState(defaultRecoveryKey);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [events, setEvents] = useState<any[]>([]);
-  const [client, setClient] = useState<MatrixClient | undefined>(undefined);
+  const [events, setEvents] = useState<
+    Array<{
+      id: string;
+      content: string;
+      userId: string;
+      type: string;
+      send: string;
+    }>
+  >([]);
   const [roomId, setRoomId] = useState(defaultRoomId);
   const [room, setRoom] = useState<Room | undefined>(undefined);
+  const [client, setClient] = useState<MatrixClient | undefined>(undefined);
 
   const initializeMatrix = async () => {
     try {
@@ -50,70 +58,30 @@ export default function ChatBox() {
     initializeMatrix();
   }, []);
 
-  const initializeMatrixClient = async () => {
-    if (!client) return;
+  const loginAndRestore = async () => {
+    if (!jwt) return;
+    if (!recoveryKey) return;
+    const newClient = createClient({ baseUrl: homeServerUrl, deviceId });
+    setClient(newClient);
+    initializeMatrixClient(newClient);
+  };
 
+  const initializeMatrixClient = async (client: MatrixClient) => {
     try {
       const loginResponse = await client.login("org.matrix.login.jwt", {
         token: jwt,
         device_id: deviceId,
       });
       console.log(`debug:loginResponse`, loginResponse);
-
       await client.initCrypto();
       await client.startClient();
       client.setGlobalErrorOnUnknownDevices(false);
-
       await restoreKeysUsingRecoveryKey(client, recoveryKey);
-      console.log("restore - done");
-
-      listenForEvents();
+      listenForEvents(client);
     } catch (err) {
       console.error("Error initializing Matrix client:", err);
     }
   };
-
-  useEffect(() => {
-    initializeMatrixClient();
-  }, [client]);
-
-  const loginAndRestore = async () => {
-    if (!jwt) return;
-    if (!recoveryKey) return;
-
-    const newClient = createClient({
-      baseUrl: homeserverUrl,
-      deviceId,
-    });
-
-    setClient(newClient);
-  };
-
-  async function sendEncryptedMessage(message: string) {
-    if (!client) return;
-    if (!roomId) return;
-    if (!message) return;
-
-    try {
-      const room = client.getRoom(roomId);
-      console.log("room", room);
-
-      if (!room) {
-        console.error("Room not found:", roomId);
-        return;
-      }
-
-      await client.joinRoom(roomId);
-
-      await client.sendEvent(roomId, EventType.RoomMessage, {
-        body: message,
-        msgtype: MsgType.Text,
-      });
-      console.log("Message sent:", message);
-    } catch (error) {
-      console.error("Error sending encrypted message:", error);
-    }
-  }
 
   async function restoreKeysUsingRecoveryKey(
     client: MatrixClient,
@@ -135,9 +103,7 @@ export default function ChatBox() {
     }
   }
 
-  const listenForEvents = () => {
-    if (!client) return;
-
+  const listenForEvents = (client: MatrixClient) => {
     client.on(RoomEvent.Timeline, async (event) => {
       if (
         event.getType() !== "m.room.message" &&
@@ -149,14 +115,15 @@ export default function ChatBox() {
       console.log("Encrypted content:", event.getContent());
       await client.decryptEventIfNeeded(event);
       const content = event.getContent();
-      console.log("Decrypted content:", content);
+      console.log("Decrypted content:", event.event.sender, content);
 
-      setEvents((e) => [
-        ...e,
+      setEvents((ev) => [
+        ...ev,
         {
-          id: Date.now(),
-          type: "text",
+          id: event.event.event_id || "",
           content: content.body,
+          userId: event.event.sender || "",
+          type: "text",
           send: "user",
         },
       ]);
@@ -166,6 +133,28 @@ export default function ChatBox() {
       console.log("Received room key request", req.requestBody);
     });
   };
+
+  async function sendEncryptedMessage(message: string) {
+    if (!client) return;
+    if (!roomId) return;
+    if (!message) return;
+
+    try {
+      const room = client.getRoom(roomId);
+      console.log("room", room);
+      if (!room) return;
+
+      await client.joinRoom(roomId);
+
+      await client.sendEvent(roomId, EventType.RoomMessage, {
+        body: message,
+        msgtype: MsgType.Text,
+      });
+      console.log("Message sent:", message);
+    } catch (error) {
+      console.error("Error sending encrypted message:", error);
+    }
+  }
 
   return (
     <div className="flex h-screen bg-background">
